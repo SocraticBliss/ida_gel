@@ -426,16 +426,16 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
       auto nidTable   = get_dword(ea + offsetof(_scelibent_ppu32, nidtable));
       auto addTable   = get_dword(ea + offsetof(_scelibent_ppu32, addtable));
       
-	  qstring libName;
+      qstring libName;
       char symName[MAXNAMELEN];
       if ( libNamePtr == NULL ) {
-		force_name(nidTable, "_NONAMEnid_table");
-		force_name(addTable, "_NONAMEentry_table");
+        force_name(nidTable, "_NONAMEnid_table");
+        force_name(addTable, "_NONAMEentry_table");
       } else {
         get_strlit_contents(&libName, libNamePtr, get_max_strlit_length(libNamePtr, STRTYPE_C), STRTYPE_C);
       
         qsnprintf(symName, MAXNAMELEN, "_%s_str", libName.c_str());
-		force_name(libNamePtr, symName);
+        force_name(libNamePtr, symName);
       
         qsnprintf(symName, MAXNAMELEN, "__%s_Functions_NID_table", libName.c_str());
         force_name(nidTable, symName);
@@ -518,7 +518,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
       ea_t tlsNidTable  = get_dword(ea + offsetof(_scelibstub_ppu32, tls_nidtable));
       ea_t tlsTable     = get_dword(ea + offsetof(_scelibstub_ppu32, tls_table));
       
-	  qstring libName;
+      qstring libName;
       char symName[MAXNAMELEN];
       get_strlit_contents(&libName, libNamePtr, get_max_strlit_length(libNamePtr, STRTYPE_C), STRTYPE_C);
       
@@ -774,7 +774,7 @@ void cell_loader::declareStructures() {
 
     sptr = get_struc(add_struc(BADADDR, "_scemoduleinfo"));
     if ( sptr != NULL ) {
-	  opinfo_t mt;
+      opinfo_t mt;
       mt.tid = modInfoCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 
@@ -800,7 +800,7 @@ void cell_loader::declareStructures() {
 
     sptr = get_struc(add_struc(BADADDR, "_scelibstub_ppu32"));
     if ( sptr != NULL ) {
-	  opinfo_t mt;
+      opinfo_t mt;
       mt.tid = libStubCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 
@@ -831,7 +831,7 @@ void cell_loader::declareStructures() {
 
     sptr = get_struc(add_struc(BADADDR, "_scelibent_ppu32"));
     if ( sptr != NULL ) {
-	  opinfo_t mt;
+      opinfo_t mt;
       mt.tid = libEntCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 

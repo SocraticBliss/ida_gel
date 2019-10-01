@@ -27,7 +27,7 @@ static int idaapi
 
     set_processor_type("ppc", SETPROC_LOADER);
         
-	fileformatname->sprnt("Playstation 3 PPU %s", type);
+    fileformatname->sprnt("Playstation 3 PPU %s", type);
     
     return 1 | ACCEPT_FIRST;
   }
