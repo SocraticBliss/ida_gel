@@ -21,7 +21,7 @@ public:
   
   bool isLoadingExec() const
     { return m_elf->type() == ET_EXEC; }
-
+  
   bool isLoadingPrx() const
     { return m_elf->type() == ET_SCE_PPURELEXEC; }
   
@@ -36,7 +36,7 @@ private:
                     uchar perm, 
                     uchar align, 
                     bool load = true);
-
+  
   void applySectionHeaders();
   void applyProgramHeaders();
   
@@ -46,13 +46,13 @@ private:
   void applyRelocation(uint32 type, uint32 addr, uint32 saddr);
   
   void declareStructures();
-
+  
   void applyModuleInfo();
   void loadExports(uint32 entTop, uint32 entEnd);
   void loadImports(uint32 stubTop, uint32 stubEnd);
   
-  const char *getNameFromDatabase(const char *group, unsigned int nid);
-
+  const char *getNameFromDatabase(qstring group, unsigned int nid);
+  
   void applyProcessInfo();
   
   void swapSymbols();

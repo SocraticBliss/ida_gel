@@ -13,29 +13,29 @@ cell_loader::cell_loader(elf_reader<elf64> *elf,
 {
   m_hasSegSym = false;
   m_relocAddr = 0;
-
+  
   // only PRX's contain relocations
   if ( isLoadingPrx() )
     m_relocAddr = relocAddr;
-
+  
   inf.demnames |= DEMNAM_GCC3;  // assume gcc3 names
   inf.af       |= AF_PROCPTR;   // Create function if data xref data->code32 exists
   inf.filetype = f_ELF;
-
+  
   char databasePath[QMAXPATH];
     
   if ( getsysfile(databasePath, QMAXFILE, databaseFile.c_str(), LDR_SUBDIR) == NULL )
     loader_failure("Could not locate database file (%s).\n", databaseFile.c_str());
-
+  
   if ( m_database.LoadFile(databasePath) == false )
     loader_failure("Failed to load database file (%s).\n", databaseFile.c_str());
 }
 
 void cell_loader::apply() {
   declareStructures();
-
+  
   applySegments();
-
+  
   swapSymbols();
   
   if ( isLoadingPrx() ) {
@@ -46,7 +46,7 @@ void cell_loader::apply() {
         break;
       }
     }
-
+    
     // we need gpValue for relocations on 0.85
     // otherwise, I don't think newer PRX's have
     // TOC based relocations. TOC is not set in 
@@ -59,11 +59,11 @@ void cell_loader::apply() {
         m_gpValue = tocSection->sh_addr + m_relocAddr;
       }
     }
-
+    
     // gpValue can be found at sceModuleInfo->gp_value
     // 0.85 gpValue is base address of .toc
     applyRelocations();
-
+    
     // if not a 0.85 PRX
     if ( !m_hasSegSym ) {
       // p_paddr is an offset into the file.
@@ -72,24 +72,24 @@ void cell_loader::apply() {
                             (firstSegment.p_paddr - firstSegment.p_offset) +
                              offsetof(_scemoduleinfo_ppu32, gp_value) );
     }
-
+    
     applyModuleInfo();
   } else if ( isLoadingExec() ) {
     // gpValue can be found at m_elf->entry() + 4
     // _start is actually what loads TOC which is hardcoded to lwz(entry + 4)
     // there are also function stubs which set TOC to a different value
     m_gpValue = get_dword(m_elf->entry() + 4);
-
+    
     applyProcessInfo();
-
+    
     add_entry(0, m_elf->entry(), "_start", true);
   }
   
-  msg("gpValue = %08x\n", m_gpValue);
+  msg("gpValue = %PRIx64\n", m_gpValue);
   
   // set TOC in IDA
   ph.notify(processor_t::event_t(ph.ev_loader+1), m_gpValue);
-
+  
   // we want to apply the symbols last so that symbols
   // always override our own custom symbols.
   applySymbols();
@@ -118,26 +118,26 @@ void cell_loader::applySectionHeaders() {
         section.sh_size > 0 ) {
       if ( section.sh_type == SHT_NULL )
         continue;
-  
+      
       uchar perm = SEGPERM_READ;
-      char *sclass;
-  
+      const char *sclass;
+      
       if ( section.sh_flags & SHF_WRITE )
         perm |= SEGPERM_WRITE;
       if ( section.sh_flags & SHF_EXECINSTR )
         perm |= SEGPERM_EXEC;
-  
+      
       if ( section.sh_flags & SHF_EXECINSTR )
         sclass = CLASS_CODE;
       else if ( section.sh_type == SHT_NOBITS )
         sclass = CLASS_BSS;
       else
         sclass = CLASS_DATA;
-  
+      
       const char *name = NULL;
-      if ( section.sh_name != NULL )
+      if ( section.sh_name != 0 )
         name = &strTab[section.sh_name];
-  
+      
       applySegment( index, 
                     section.sh_offset, 
                     section.sh_addr, 
@@ -147,7 +147,7 @@ void cell_loader::applySectionHeaders() {
                     perm, 
                     m_elf->getAlignment(section.sh_addralign), 
                     (section.sh_type == SHT_NOBITS) ? false : true );
-  
+      
       ++index;
     }
   }
@@ -156,13 +156,13 @@ void cell_loader::applySectionHeaders() {
 void cell_loader::applyProgramHeaders() {
   msg("Applying program headers...\n");
   auto &segments = m_elf->getSegments();
-
+  
   size_t index = 0;
   for ( const auto &segment : segments ) {
     if ( segment.p_memsz > 0 ) {
       uchar perm;
-      char *sclass;
-
+      const char *sclass;
+      
       if ( segment.p_flags & PF_W )    // if its writable
         sclass = CLASS_DATA;
       if ( (segment.p_flags & PF_R) && // if its only readable
@@ -171,18 +171,18 @@ void cell_loader::applyProgramHeaders() {
         sclass = CLASS_CONST;
       if ( segment.p_flags & PF_X )    // if its executable
         sclass = CLASS_CODE;
-        
+      
       if ( segment.p_filesz == 0 &&
            segment.p_memsz > 0 )
         sclass = CLASS_BSS;
-
+      
       if ( segment.p_flags & PF_X )
         perm |= SEGPERM_EXEC;
       if ( segment.p_flags & PF_W )
         perm |= SEGPERM_WRITE;
       if ( segment.p_flags & PF_R )
         perm |= SEGPERM_READ;
-
+      
       applySegment( index, 
                     segment.p_offset, 
                     segment.p_vaddr, 
@@ -191,7 +191,7 @@ void cell_loader::applyProgramHeaders() {
                     sclass, 
                     perm, 
                     m_elf->getAlignment(segment.p_align) );
-
+      
       ++index;
     }
   }
@@ -207,7 +207,7 @@ void cell_loader::applySegment(uint32 sel,
                                uchar align, 
                                bool load) {
   addr += m_relocAddr;
-
+  
   segment_t seg;
   seg.start_ea = addr;
   seg.end_ea = addr + size;
@@ -219,14 +219,14 @@ void cell_loader::applySegment(uint32 sel,
   seg.perm = perm;
   seg.flags = SFL_LOADER;
   seg.align = align;
-
+  
   set_selector(sel, 0);
-
+  
   if ( name == NULL )
     name = "";
-
-  add_segm_ex(&seg, name, sclass, NULL);
-
+  
+  add_segm_ex(&seg, name, sclass, 0);
+  
   if ( load == true )
     file2base(m_elf->getReader(), offset, addr, addr + size, true);
 }
@@ -240,58 +240,58 @@ void cell_loader::applyRelocations() {
 
 void cell_loader::applySectionRelocations() {
   msg("Applying section based relocations..\n");
-
+  
   auto &sections = m_elf->getSections();
   auto symbols = m_elf->getSymbols();
-
+  
   for ( auto &section : sections ) {
     // NOTE: the only SHT_RELA sections I see after 0.85 
     //       are non-allocatable so no reason to consider those
     if ( section.sh_type == SHT_RELA ) {
       if ( !(sections[ section.sh_info ].sh_flags & SHF_ALLOC) )
         continue;
-
+      
       auto nrela = section.sh_size / sizeof(Elf64_Rela);
       auto relocations = reinterpret_cast<Elf64_Rela *>(section.data());
-
+      
       for ( size_t i = 0; i < nrela; ++i ) {
         auto &rela = relocations[i];
-
+        
         swap(rela.r_offset);
         swap(rela.r_info);
         swap(rela.r_addend);
-
+        
         uint32 type = ELF64_R_TYPE(rela.r_info);
         uint32 sym  = ELF64_R_SYM (rela.r_info);
-
+        
         //msg("r_type: %08x\n", type);
         //msg("r_sym: %08x\n", sym);
-
+        
         if ( type == R_PPC64_NONE ) {
           msg("Skipping relocation..\n");
           continue;
         }
-
+        
         if ( type > R_PPC64_TLSGD ) {
           msg("Invalid relocation type (%i)!\n", type);
           continue;
         }
-
+        
         //msg("nsyms = %08x\n", m_elf->getNumSymbols());
         //msg("symsec = %04x\n", symbols[ sym ].st_shndx);
-
+        
         if ( sym > m_elf->getNumSymbols() ) {
           msg("Invalid symbol index!\n");
           continue;
         }
-
+        
         if ( symbols[ sym ].st_shndx > m_elf->getNumSections() ) {
           if ( symbols[ sym ].st_shndx != SHN_ABS ) {
             msg("Invalid symbol section index!\n");
             continue;
           }
         }
-
+        
         uint32 symaddr;
         if ( symbols[ sym ].st_shndx == SHN_ABS )
           symaddr = symbols[ sym ].st_value;
@@ -302,7 +302,7 @@ void cell_loader::applySectionRelocations() {
                        rela.r_offset;
         uint32 saddr = symaddr + symbols[ sym ].st_value + 
                        rela.r_addend;
-
+        
         applyRelocation(type, addr, saddr);
       }
     }
@@ -311,21 +311,21 @@ void cell_loader::applySectionRelocations() {
 
 void cell_loader::applySegmentRelocations() {
   msg("Applying segment based relocations..\n");
-
+  
   auto &segments = m_elf->getSegments();
-
+  
   for ( auto &segment : segments ) {
     if ( segment.p_type == PT_SCE_PPURELA ) {
       auto nrela = segment.p_filesz / sizeof(Elf64_Rela);
       auto relocations = reinterpret_cast<Elf64_Rela *>(segment.data());
-
+      
       for ( size_t i = 0; i < nrela; ++i ) {
         auto &rela = relocations[i];
-
+        
         swap(rela.r_offset);
         swap(rela.r_info);
         swap(rela.r_addend);
-
+        
         auto type     = ELF64_R_TYPE(rela.r_info);
         
         if ( type == R_PPC64_NONE )
@@ -334,18 +334,18 @@ void cell_loader::applySegmentRelocations() {
         auto sym    = ELF64_R_SYM(rela.r_info);
         auto patchseg = (sym & 0x000000ff);
         auto symseg   = (sym & 0x7fffff00) >> 8;
-      
+        
         uint32 addr, saddr;
         if ( patchseg == 0xFF )
           addr = 0;
         else
           addr = segments[patchseg].p_vaddr + rela.r_offset;
-      
+        
         if ( symseg == 0xFF )
           saddr = 0;
         else
           saddr = segments[symseg].p_vaddr + rela.r_addend;
-      
+        
         applyRelocation(type, addr, saddr);
       }
       break;  // TODO: should only be one segment right?
@@ -355,12 +355,12 @@ void cell_loader::applySegmentRelocations() {
 
 void cell_loader::applyRelocation(uint32 type, uint32 addr, uint32 saddr) {
   uint32 value;
-
+  
   addr += m_relocAddr;
   saddr += m_relocAddr;
-
+  
   //msg("Applying relocation %i (%08x -> %08x)\n", type, addr, saddr);
-
+  
   switch ( type ) {
     case R_PPC64_ADDR32:
       value = saddr;
@@ -400,28 +400,28 @@ void cell_loader::applyRelocation(uint32 type, uint32 addr, uint32 saddr) {
 
 void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
   msg("Loading exports...\n");
-
+  
   tid_t tid = get_struc_id("_scelibent_ppu32");
   force_name(entTop - 4, "__begin_of_section_lib_ent");
   force_name(entEnd, "__end_of_section_lib_ent");
-
+  
   uchar structsize;
-
+  
   for ( ea_t ea = entTop; ea < entEnd; ea += structsize ) {
     structsize = get_byte(ea);
-
+    
     auto nfunc   = get_word(ea + offsetof(_scelibent_common, nfunc));
     auto nvar    = get_word(ea + offsetof(_scelibent_common, nvar));
     auto ntlsvar = get_word(ea + offsetof(_scelibent_common, ntlsvar));
     auto count = nfunc + nvar + ntlsvar;
-
+    
     //msg("Num Functions: %i\n", nfunc);
     //msg("Num Variables: %i\n", nvar);
     //msg("Num TLS Variables: %i\n", ntlsvar);
-
+    
     if ( structsize == sizeof(_scelibent_ppu32) ) {
       create_struct(ea, sizeof(_scelibent_ppu32), tid);
-    
+      
       auto libNamePtr = get_dword(ea + offsetof(_scelibent_ppu32, libname));
       auto nidTable   = get_dword(ea + offsetof(_scelibent_ppu32, nidtable));
       auto addTable   = get_dword(ea + offsetof(_scelibent_ppu32, addtable));
@@ -433,13 +433,13 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
         force_name(addTable, "_NONAMEentry_table");
       } else {
         get_strlit_contents(&libName, libNamePtr, get_max_strlit_length(libNamePtr, STRTYPE_C), STRTYPE_C);
-      
+        
         qsnprintf(symName, MAXNAMELEN, "_%s_str", libName.c_str());
         force_name(libNamePtr, symName);
-      
+        
         qsnprintf(symName, MAXNAMELEN, "__%s_Functions_NID_table", libName.c_str());
         force_name(nidTable, symName);
-      
+        
         qsnprintf(symName, MAXNAMELEN, "__%s_Functions_table", libName.c_str());
         force_name(addTable, symName);
       }
@@ -450,28 +450,28 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
           const char *resolvedNid;
           ea_t nidOffset = nidTable + (i * 4);
           ea_t addOffset = addTable + (i * 4);
-      
+          
           uint32 nid = get_dword(nidOffset);
           uint32 add = get_dword(addOffset);
-      
+          
           if ( libNamePtr ) {
             uint32 addToc = get_dword(add);
-            resolvedNid = getNameFromDatabase(libName.c_str(), nid);
+            resolvedNid = getNameFromDatabase(libName, nid);
             if ( resolvedNid ) {
               set_cmt(nidOffset, resolvedNid, false);
               force_name(add, resolvedNid);
-      
+              
               // only label functions this way
               if ( i < nfunc ) {
                 qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
                 force_name(addToc, symName);
               }
             }
-      
+            
             if ( i < nfunc )
               auto_make_proc(addToc);
           }
-      
+          
           //msg("create_dword: %08x\n", nidOffset);
           //msg("create_dword: %08x\n", addOffset);
           create_dword(nidOffset, 4);
@@ -479,7 +479,7 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
         }
       }
     } else {
-      msg("Unknown export structure at %08x.\n", ea);
+      msg("Unknown export structure at %08x\n", ea);
       continue;
     }
   }
@@ -487,14 +487,14 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
 
 void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
   msg("Loading imports...\n");
-
+  
   tid_t tid = get_struc_id("_scelibstub_ppu32");
-
+  
   force_name(stubTop - 4, "__begin_of_section_lib_stub");
   force_name(stubEnd, "__end_of_section_lib_stub");
-
+  
   uchar structsize;
-
+  
   // define data for lib stub
   for ( ea_t ea = stubTop; ea < stubEnd; ea += structsize ) {
     structsize = get_byte(ea);
@@ -502,11 +502,11 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
     auto nFunc   = get_word(ea + offsetof(_scelibstub_common, nfunc));
     auto nVar    = get_word(ea + offsetof(_scelibstub_common, nvar));
     auto nTlsVar = get_word(ea + offsetof(_scelibstub_common, ntlsvar));
-
+    
     //msg("Num Functions: %i\n", nFunc);
     //msg("Num Variables: %i\n", nVar);
     //msg("Num TLS Variables: %i\n", nTlsVar);
-
+    
     if (structsize == sizeof(_scelibstub_ppu32)) {
       create_struct(ea, sizeof(_scelibstub_ppu32), tid);
       
@@ -535,14 +535,14 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
       if ( funcNidTable != NULL && funcTable != NULL ) {
         for ( int i = 0; i < nFunc; ++i ) {
           const char *resolvedNid;
-      
+          
           ea_t nidOffset = funcNidTable + (i * 4);
           ea_t funcOffset = funcTable + (i * 4);
-      
+          
           uint32 nid = get_dword(nidOffset);
           uint32 func = get_dword(funcOffset);
-      
-          resolvedNid = getNameFromDatabase(libName.c_str(), nid);
+          
+          resolvedNid = getNameFromDatabase(libName, nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
             qsnprintf(symName, MAXNAMELEN, "%s.stub_entry", resolvedNid);
@@ -550,7 +550,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
             qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
             force_name(func, symName);
           }
-      
+          
           //msg("create_dword: %08x\n", nidOffset);
           //msg("create_dword: %08x\n", funcOffset);
           create_dword(nidOffset, 4);   // nid
@@ -566,21 +566,21 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
       if ( varNidTable != NULL && varTable ) {
         for ( int i = 0; i < nVar; ++i ) {
           const char *resolvedNid;
-      
+          
           ea_t nidOffset = varNidTable + (i * 4);
           ea_t varOffset = varTable + (i * 4);
-      
+          
           uint32 nid = get_dword(nidOffset);
           uint32 func = get_dword(varOffset);
-      
+          
           resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
             force_name(varOffset, resolvedNid);
           }
-      
+          
           //msg("create_dword: %08x\n", nidOffset);
-          //msg("create_dword: %08x\n", varOffset);
+          //msg("create_dword: %08x\n", tlsOffset);
           create_dword(nidOffset, 4);
           create_dword(varOffset, 4);
         }
@@ -590,19 +590,19 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
       if ( tlsNidTable != NULL && tlsTable != NULL ) {
         for ( int i = 0; i < nVar; ++i ) {
           const char *resolvedNid;
-      
+          
           ea_t nidOffset = tlsNidTable + (i * 4);
           ea_t tlsOffset = tlsTable + (i * 4);
-      
+          
           uint32 nid = get_dword(nidOffset);
           uint32 func = get_dword(tlsOffset);
-      
+          
           resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
             force_name(tlsOffset, resolvedNid);
           }
-      
+          
           //msg("create_dword: %08x\n", nidOffset);
           //msg("create_dword: %08x\n", tlsOffset);
           create_dword(nidOffset, 4);
@@ -617,15 +617,15 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
 }
 
 const char *cell_loader::getNameFromDatabase(
-    const char *library, unsigned int nid) {
+    qstring library, unsigned int nid) {
   auto header = m_database.FirstChildElement();
-
+  
   if ( header ) {
     auto group  = header->FirstChildElement(); 
     if ( group ) {
       // find library in xml
       do {
-        if ( !strcmp(library, group->Attribute("name")) ) {
+        if ( !strcmp(library.c_str(), group->Attribute("name")) ) {
           auto entry = group->FirstChildElement();
           if ( entry ) {
             // find NID in library group
@@ -644,7 +644,7 @@ const char *cell_loader::getNameFromDatabase(
 
 void cell_loader::applyModuleInfo() {
   auto firstSegment = m_elf->getSegments()[0];
-
+  
   ea_t modInfoEa = (firstSegment.p_vaddr + m_relocAddr) +
                    (firstSegment.p_paddr - firstSegment.p_offset);
                              
@@ -656,7 +656,7 @@ void cell_loader::applyModuleInfo() {
                
   loadImports( get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_top)),
                get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_end)) );
-
+  
   add_entry(0, modInfoEa, "module_info", false);
                              
 }
@@ -669,10 +669,10 @@ void cell_loader::applyProcessInfo() {
     } else if ( segment.p_type == PT_PROC_PRX ) {
       tid_t tid = get_struc_id("sys_process_prx_info_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
-
+      
       loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
                    get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
-
+      
       loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
                    get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
     }
@@ -685,17 +685,17 @@ void cell_loader::swapSymbols() {
   // Pretty much only for 0.85 PRX's but we still need to
   // swap them anyway.
   auto section = m_elf->getSymbolsSection();
-
+  
   if (section == NULL)
     return;
-
+  
   //msg("Swapping symbols...\n");
-
+  
   auto symbols = m_elf->getSymbols();
-
+  
   for ( size_t i = 0; i < m_elf->getNumSymbols(); ++i ) {
     auto symbol = &symbols[i];
-
+    
     swap(symbol->st_name);
     swap(symbol->st_shndx);
     swap(symbol->st_size);
@@ -708,35 +708,35 @@ void cell_loader::applySymbols() {
   
   if (section == NULL)
     return;
-
+  
   msg("Applying symbols...\n");
-
+  
   auto nsym = m_elf->getNumSymbols();
   auto symbols = m_elf->getSymbols();
-
+  
   const char *stringTable = m_elf->getSections().at(section->sh_link).data();
-
+  
   for ( size_t i = 0; i < nsym; ++i ) {
     auto &symbol = symbols[i];
-
+    
     auto type = ELF64_ST_TYPE(symbol.st_info),
          bind = ELF64_ST_BIND(symbol.st_info);
     auto value = symbol.st_value;
-
+    
     //msg("st_name: %08x\n", symbol.st_name);
     //msg("st_type: %08x\n", type);
     //msg("st_bind: %08x\n", bind);
-
+    
     if ( symbol.st_shndx > m_elf->getNumSections() ||
         !(m_elf->getSections()[ symbol.st_shndx ].sh_flags & SHF_ALLOC) )
       continue;
-
+    
     if ( symbol.st_shndx == SHN_ABS )
       continue;
-
+    
     if ( isLoadingPrx() )
       value += m_elf->getSections()[ symbol.st_shndx ].sh_addr + m_relocAddr;
-
+    
     switch ( type ) {
     case STT_OBJECT:
       force_name(value, &stringTable[ symbol.st_name ]);
@@ -756,14 +756,14 @@ void cell_loader::applySymbols() {
 
 void cell_loader::declareStructures() {
   struc_t *sptr;
-
+  
   // offset type
   opinfo_t ot;
   ot.ri.flags   = REF_OFF32;
   ot.ri.target  = BADADDR;
   ot.ri.base    = 0;
   ot.ri.tdelta  = 0;
-
+  
   tid_t modInfoCommon = add_struc(BADADDR, "_scemoduleinfo_common");
   sptr = get_struc(modInfoCommon);
   if ( sptr != NULL ) {
@@ -771,13 +771,13 @@ void cell_loader::declareStructures() {
     add_struc_member(sptr, "modversion", BADADDR, byte_flag(), NULL, 2);
     add_struc_member(sptr, "modname", BADADDR, byte_flag(), NULL, SYS_MODULE_NAME_LEN);
     add_struc_member(sptr, "terminal", BADADDR, byte_flag(), NULL, 1);
-
+    
     sptr = get_struc(add_struc(BADADDR, "_scemoduleinfo"));
     if ( sptr != NULL ) {
       opinfo_t mt;
       mt.tid = modInfoCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
-
+      
       add_struc_member(sptr, "gp_value", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "ent_top", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "ent_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
@@ -785,7 +785,7 @@ void cell_loader::declareStructures() {
       add_struc_member(sptr, "stub_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
-
+  
   tid_t libStubCommon = add_struc(BADADDR, "_scelibstub_ppu_common");
   sptr = get_struc(libStubCommon);
   if ( sptr != NULL ) {
@@ -797,13 +797,13 @@ void cell_loader::declareStructures() {
     add_struc_member(sptr, "nvar", BADADDR, word_flag(), NULL, 2);
     add_struc_member(sptr, "ntlsvar", BADADDR, word_flag(), NULL, 2);
     add_struc_member(sptr, "reserved2", BADADDR, byte_flag(), NULL, 4);
-
+    
     sptr = get_struc(add_struc(BADADDR, "_scelibstub_ppu32"));
     if ( sptr != NULL ) {
       opinfo_t mt;
       mt.tid = libStubCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
-
+      
       add_struc_member(sptr, "libname", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "func_nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "func_table", BADADDR, off_flag() | dword_flag(), &ot, 4);
@@ -813,7 +813,7 @@ void cell_loader::declareStructures() {
       add_struc_member(sptr, "tls_table", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
-
+  
   tid_t libEntCommon = add_struc(BADADDR, "_scelibent_ppu_common");
   sptr = get_struc(libEntCommon);
   if ( sptr != NULL ) {
@@ -828,19 +828,19 @@ void cell_loader::declareStructures() {
     add_struc_member(sptr, "hashinfotls", BADADDR, byte_flag(), NULL, 1);
     add_struc_member(sptr, "reserved2", BADADDR, byte_flag(), NULL, 1);
     add_struc_member(sptr, "nidaltsets", BADADDR, byte_flag(), NULL, 1);
-
+    
     sptr = get_struc(add_struc(BADADDR, "_scelibent_ppu32"));
     if ( sptr != NULL ) {
       opinfo_t mt;
       mt.tid = libEntCommon;
       add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
-
+      
       add_struc_member(sptr, "libname", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
       add_struc_member(sptr, "addtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
-
+  
   tid_t procParamInfo = add_struc(BADADDR, "sys_process_param_t");
   sptr = get_struc(procParamInfo);
   if ( sptr != NULL ) {
@@ -854,7 +854,7 @@ void cell_loader::declareStructures() {
     add_struc_member(sptr, "ppc_seg", BADADDR, dword_flag(), NULL, 4);
     add_struc_member(sptr, "crash_dump_param_addr", BADADDR, dword_flag(), NULL, 4);
   }
-
+  
   tid_t procPrxInfo = add_struc(BADADDR, "sys_process_prx_info_t");
   sptr = get_struc(procPrxInfo);
   if ( sptr != NULL ) {

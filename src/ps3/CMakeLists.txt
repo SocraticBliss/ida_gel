@@ -32,4 +32,4 @@ add_definitions(-DUSE_STANDARD_FILE_FUNCTIONS) # for tinyxml...
 
 add_library(ps3ldr SHARED ${SOURCES})
 target_link_libraries(ps3ldr ${IDA_LIBRARIES})
-set_target_properties(ps3ldr PROPERTIES OUTPUT_NAME "ps3" PREFIX "" SUFFIX "${IDA_PLUGIN_EXT}")
+set_target_properties(ps3ldr PROPERTIES OUTPUT_NAME "ps3ldr" PREFIX "" SUFFIX "${IDA_PLUGIN_EXT}")

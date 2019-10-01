@@ -2,35 +2,35 @@
 
 #include "elf.h"
 
-#define ELFOSABI_CELLOSLV2            102     /* CellOS Lv2 */ /* sce local */
+#define ELFOSABI_CELLOSLV2         102 /* CellOS Lv2 */ /* sce local */
 
-#define ET_SCE_PPURELEXEC	  0xffa4
+#define ET_SCE_PPURELEXEC       0xffa4
 
-#define SHT_SCE_PPURELA	  0x700000a4
+#define SHT_SCE_PPURELA     0x700000a4
 
-#define PT_PROC_PARAM		  0x60000001
-#define PT_PROC_PRX     	0x60000002
+#define PT_PROC_PARAM       0x60000001
+#define PT_PROC_PRX         0x60000002
 
-#define PT_SCE_COMMENT  0x6fffff00
-#define PT_SCE_VERSION	0x6fffff01
+#define PT_SCE_COMMENT      0x6fffff00
+#define PT_SCE_VERSION      0x6fffff01
 
-#define PT_SCE_PPURELA	0x700000a4
-#define PT_SCE_SEGSYM   0x700000a8
+#define PT_SCE_PPURELA      0x700000a4
+#define PT_SCE_SEGSYM       0x700000a8
 
-#define PF_SPU_X  (0x00100000) /* SPU executable defined, but unused.*/
-#define PF_SPU_W  (0x00200000) /* SPU writable  */
-#define PF_SPU_R  (0x00400000) /* SPU readable  */
-#define PF_RSX_X  (0x01000000) /* RSX executable defined, but unused. */
-#define PF_RSX_W  (0x02000000) /* RSX writable */
-#define PF_RSX_R  (0x04000000) /* RSX readable */
+#define PF_SPU_X          (0x00100000) /* SPU executable defined, but unused.*/
+#define PF_SPU_W          (0x00200000) /* SPU writable  */
+#define PF_SPU_R          (0x00400000) /* SPU readable  */
+#define PF_RSX_X          (0x01000000) /* RSX executable defined, but unused. */
+#define PF_RSX_W          (0x02000000) /* RSX writable */
+#define PF_RSX_R          (0x04000000) /* RSX readable */
 
-#define SYS_MODULE_NAME_LEN	    27
-#define SYS_MODULE_MAX_SEGMENTS	4
+#define SYS_MODULE_NAME_LEN         27
+#define SYS_MODULE_MAX_SEGMENTS      4
 
-#define SYS_LIB_AUTO_EXPORT	  (0x0001)
-#define SYS_LIB_WEAK_EXPORT	  (0x0002)
-#define SYS_LIB_NOLINK_EXPORT	(0x0004)
-#define SYS_LIB_WEAK_IMPORT	  (0x0008)
+#define SYS_LIB_AUTO_EXPORT   (0x0001)
+#define SYS_LIB_WEAK_EXPORT   (0x0002)
+#define SYS_LIB_NOLINK_EXPORT (0x0004)
+#define SYS_LIB_WEAK_IMPORT   (0x0008)
 
 /* MODULE INFO */
 
@@ -133,7 +133,7 @@ typedef struct _scelibent_ppu64 {
 
 /* PROCESS PARAM */
 
-#define SYS_PROCESS_PARAM_MAGIC			0x13bcc5f6
+#define SYS_PROCESS_PARAM_MAGIC    0x13bcc5f6
 
 typedef struct {
   unsigned int size;
@@ -149,8 +149,8 @@ typedef struct {
 
 /* PROCESS PRX */
 
-#define SYS_PROCESS_PRX_MAGIC			0x1b434cec
-#define SYS_PROCESS_PRX_VERSION         4           /* latest */
+#define SYS_PROCESS_PRX_MAGIC      0x1b434cec
+#define SYS_PROCESS_PRX_VERSION    4          /* latest */
 
 typedef struct sys_process_prx_info_t {
   unsigned int size;
