@@ -1,4 +1,4 @@
-#pragma once
+
 
 #include "elf_reader.h"
 #include "tinyxml.h"
@@ -51,7 +51,7 @@ private:
   void loadExports(uint32 entTop, uint32 entEnd);
   void loadImports(uint32 stubTop, uint32 stubEnd);
   
-  const char *getNameFromDatabase(qstring group, unsigned int nid);
+  const char *getNameFromDatabase(const char *library, unsigned int nid);
   
   void applyProcessInfo();
   

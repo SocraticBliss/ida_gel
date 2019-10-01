@@ -32,10 +32,13 @@ cell_loader::cell_loader(elf_reader<elf64> *elf,
 }
 
 void cell_loader::apply() {
+  msg("Declaring Structures...\n");
   declareStructures();
   
+  msg("Applying Segments...\n");
   applySegments();
   
+  msg("Swapping Symbols...\n");
   swapSymbols();
   
   if ( isLoadingPrx() ) {
@@ -62,7 +65,8 @@ void cell_loader::apply() {
     
     // gpValue can be found at sceModuleInfo->gp_value
     // 0.85 gpValue is base address of .toc
-    applyRelocations();
+	msg("Applying Relocations...\n");
+	applyRelocations();
     
     // if not a 0.85 PRX
     if ( !m_hasSegSym ) {
@@ -73,6 +77,7 @@ void cell_loader::apply() {
                              offsetof(_scemoduleinfo_ppu32, gp_value) );
     }
     
+	msg("Applying Module Info...\n");
     applyModuleInfo();
   } else if ( isLoadingExec() ) {
     // gpValue can be found at m_elf->entry() + 4
@@ -85,13 +90,14 @@ void cell_loader::apply() {
     add_entry(0, m_elf->entry(), "_start", true);
   }
   
-  msg("gpValue = %PRIx64\n", m_gpValue);
+  msg("gpValue = %08\n", m_gpValue);
   
   // set TOC in IDA
   ph.notify(processor_t::event_t(ph.ev_loader+1), m_gpValue);
   
   // we want to apply the symbols last so that symbols
   // always override our own custom symbols.
+  msg("Applying Symbols...\n");
   applySymbols();
 }
 
@@ -120,7 +126,7 @@ void cell_loader::applySectionHeaders() {
         continue;
       
       uchar perm = SEGPERM_READ;
-      const char *sclass;
+      char *sclass;
       
       if ( section.sh_flags & SHF_WRITE )
         perm |= SEGPERM_WRITE;
@@ -135,7 +141,7 @@ void cell_loader::applySectionHeaders() {
         sclass = CLASS_DATA;
       
       const char *name = NULL;
-      if ( section.sh_name != 0 )
+      if ( section.sh_name != NULL )
         name = &strTab[section.sh_name];
       
       applySegment( index, 
@@ -161,7 +167,7 @@ void cell_loader::applyProgramHeaders() {
   for ( const auto &segment : segments ) {
     if ( segment.p_memsz > 0 ) {
       uchar perm;
-      const char *sclass;
+      char *sclass;
       
       if ( segment.p_flags & PF_W )    // if its writable
         sclass = CLASS_DATA;
@@ -225,7 +231,7 @@ void cell_loader::applySegment(uint32 sel,
   if ( name == NULL )
     name = "";
   
-  add_segm_ex(&seg, name, sclass, 0);
+  add_segm_ex(&seg, name, sclass, NULL);
   
   if ( load == true )
     file2base(m_elf->getReader(), offset, addr, addr + size, true);
@@ -456,7 +462,7 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
           
           if ( libNamePtr ) {
             uint32 addToc = get_dword(add);
-            resolvedNid = getNameFromDatabase(libName, nid);
+            resolvedNid = getNameFromDatabase(libName.c_str(), nid);
             if ( resolvedNid ) {
               set_cmt(nidOffset, resolvedNid, false);
               force_name(add, resolvedNid);
@@ -479,7 +485,7 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
         }
       }
     } else {
-      msg("Unknown export structure at %08x\n", ea);
+      msg("Unknown export structure at %08x.\n", ea);
       continue;
     }
   }
@@ -542,7 +548,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           uint32 nid = get_dword(nidOffset);
           uint32 func = get_dword(funcOffset);
           
-          resolvedNid = getNameFromDatabase(libName, nid);
+          resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
             qsnprintf(symName, MAXNAMELEN, "%s.stub_entry", resolvedNid);
@@ -555,10 +561,10 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           //msg("create_dword: %08x\n", funcOffset);
           create_dword(nidOffset, 4);   // nid
           create_dword(funcOffset, 4);  // func
-          if ( add_func(func, BADADDR) ) {
+          /*if ( add_func(func, BADADDR) ) {
             get_func(func)->flags |= FUNC_LIB;
             //add_entry(func, func, ...)
-          }
+          }*/
         }
       }
       
@@ -580,7 +586,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           }
           
           //msg("create_dword: %08x\n", nidOffset);
-          //msg("create_dword: %08x\n", tlsOffset);
+          //msg("create_dword: %08x\n", varOffset);
           create_dword(nidOffset, 4);
           create_dword(varOffset, 4);
         }
@@ -617,7 +623,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
 }
 
 const char *cell_loader::getNameFromDatabase(
-    qstring library, unsigned int nid) {
+	const char *library, unsigned int nid) {
   auto header = m_database.FirstChildElement();
   
   if ( header ) {
@@ -625,7 +631,7 @@ const char *cell_loader::getNameFromDatabase(
     if ( group ) {
       // find library in xml
       do {
-        if ( !strcmp(library.c_str(), group->Attribute("name")) ) {
+        if ( !strcmp(library, group->Attribute("name")) ) {
           auto entry = group->FirstChildElement();
           if ( entry ) {
             // find NID in library group
