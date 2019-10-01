@@ -68,7 +68,7 @@ void cell_loader::apply() {
     if ( !m_hasSegSym ) {
       // p_paddr is an offset into the file.
       auto firstSegment = m_elf->getSegments()[0];
-      m_gpValue = get_long( (firstSegment.p_vaddr + m_relocAddr) + // file offset to address
+      m_gpValue = get_dword( (firstSegment.p_vaddr + m_relocAddr) + // file offset to address
                             (firstSegment.p_paddr - firstSegment.p_offset) +
                              offsetof(_scemoduleinfo_ppu32, gp_value) );
     }
@@ -78,7 +78,7 @@ void cell_loader::apply() {
     // gpValue can be found at m_elf->entry() + 4
     // _start is actually what loads TOC which is hardcoded to lwz(entry + 4)
     // there are also function stubs which set TOC to a different value
-    m_gpValue = get_long(m_elf->entry() + 4);
+    m_gpValue = get_dword(m_elf->entry() + 4);
 
     applyProcessInfo();
 
@@ -88,7 +88,7 @@ void cell_loader::apply() {
   msg("gpValue = %08x\n", m_gpValue);
   
   // set TOC in IDA
-  ph.notify(processor_t::idp_notify(ph.loader+1), m_gpValue);
+  ph.notify(processor_t::event_t(ph.ev_loader+1), m_gpValue);
 
   // we want to apply the symbols last so that symbols
   // always override our own custom symbols.
@@ -209,8 +209,8 @@ void cell_loader::applySegment(uint32 sel,
   addr += m_relocAddr;
 
   segment_t seg;
-  seg.startEA = addr;
-  seg.endEA = addr + size;
+  seg.start_ea = addr;
+  seg.end_ea = addr + size;
   seg.color = DEFCOLOR;
   seg.sel = sel;
   seg.bitness = 1;
@@ -364,7 +364,7 @@ void cell_loader::applyRelocation(uint32 type, uint32 addr, uint32 saddr) {
   switch ( type ) {
     case R_PPC64_ADDR32:
       value = saddr;
-      patch_long(addr, value);
+      patch_dword(addr, value);
       break;
     case R_PPC64_ADDR16_LO:
       value = saddr & 0xFFFF;
@@ -375,9 +375,9 @@ void cell_loader::applyRelocation(uint32 type, uint32 addr, uint32 saddr) {
       patch_word(addr, value);
       break;
     case R_PPC64_REL24:
-      value = get_original_long(addr);
+      value = get_original_dword(addr);
       value = (value & ~0x03fffffc) | ((saddr - addr) & 0x3fffffc);
-      patch_long(addr, value);
+      patch_dword(addr, value);
       break;
     case R_PPC64_TOC16:
       value = saddr - m_gpValue;
@@ -390,7 +390,7 @@ void cell_loader::applyRelocation(uint32 type, uint32 addr, uint32 saddr) {
       break;
     case R_PPC64_TLSGD:
       value = m_gpValue;
-      patch_long(addr, value);
+      patch_dword(addr, value);
       break;
     default:
       msg("Unsupported relocation (%i).\n", type);
@@ -402,8 +402,8 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
   msg("Loading exports...\n");
 
   tid_t tid = get_struc_id("_scelibent_ppu32");
-  do_name_anyway(entTop - 4, "__begin_of_section_lib_ent");
-  do_name_anyway(entEnd, "__end_of_section_lib_ent");
+  force_name(entTop - 4, "__begin_of_section_lib_ent");
+  force_name(entEnd, "__end_of_section_lib_ent");
 
   uchar structsize;
 
@@ -420,28 +420,28 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
     //msg("Num TLS Variables: %i\n", ntlsvar);
 
     if ( structsize == sizeof(_scelibent_ppu32) ) {
-      doStruct(ea, sizeof(_scelibent_ppu32), tid);
+      create_struct(ea, sizeof(_scelibent_ppu32), tid);
     
-      auto libNamePtr = get_long(ea + offsetof(_scelibent_ppu32, libname));
-      auto nidTable   = get_long(ea + offsetof(_scelibent_ppu32, nidtable));
-      auto addTable   = get_long(ea + offsetof(_scelibent_ppu32, addtable));
+      auto libNamePtr = get_dword(ea + offsetof(_scelibent_ppu32, libname));
+      auto nidTable   = get_dword(ea + offsetof(_scelibent_ppu32, nidtable));
+      auto addTable   = get_dword(ea + offsetof(_scelibent_ppu32, addtable));
       
-      char libName[256];
+	  qstring libName;
       char symName[MAXNAMELEN];
       if ( libNamePtr == NULL ) {
-        do_name_anyway(nidTable, "_NONAMEnid_table");
-        do_name_anyway(addTable, "_NONAMEentry_table");
+		force_name(nidTable, "_NONAMEnid_table");
+		force_name(addTable, "_NONAMEentry_table");
       } else {
-        get_ascii_contents(libNamePtr, get_max_ascii_length(libNamePtr, ASCSTR_C), ASCSTR_C, libName, 256);
+        get_strlit_contents(&libName, libNamePtr, get_max_strlit_length(libNamePtr, STRTYPE_C), STRTYPE_C);
       
-        qsnprintf(symName, MAXNAMELEN, "_%s_str", libName);
-        do_name_anyway(libNamePtr, symName);
+        qsnprintf(symName, MAXNAMELEN, "_%s_str", libName.c_str());
+		force_name(libNamePtr, symName);
       
-        qsnprintf(symName, MAXNAMELEN, "__%s_Functions_NID_table", libName);
-        do_name_anyway(nidTable, symName);
+        qsnprintf(symName, MAXNAMELEN, "__%s_Functions_NID_table", libName.c_str());
+        force_name(nidTable, symName);
       
-        qsnprintf(symName, MAXNAMELEN, "__%s_Functions_table", libName);
-        do_name_anyway(addTable, symName);
+        qsnprintf(symName, MAXNAMELEN, "__%s_Functions_table", libName.c_str());
+        force_name(addTable, symName);
       }
       
       //msg("Processing entries..\n");
@@ -451,20 +451,20 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
           ea_t nidOffset = nidTable + (i * 4);
           ea_t addOffset = addTable + (i * 4);
       
-          uint32 nid = get_long(nidOffset);
-          uint32 add = get_long(addOffset);
+          uint32 nid = get_dword(nidOffset);
+          uint32 add = get_dword(addOffset);
       
           if ( libNamePtr ) {
-            uint32 addToc = get_long(add);
-            resolvedNid = getNameFromDatabase(libName, nid);
+            uint32 addToc = get_dword(add);
+            resolvedNid = getNameFromDatabase(libName.c_str(), nid);
             if ( resolvedNid ) {
               set_cmt(nidOffset, resolvedNid, false);
-              do_name_anyway(add, resolvedNid);
+              force_name(add, resolvedNid);
       
               // only label functions this way
               if ( i < nfunc ) {
                 qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
-                do_name_anyway(addToc, symName);
+                force_name(addToc, symName);
               }
             }
       
@@ -472,10 +472,10 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
               auto_make_proc(addToc);
           }
       
-          //msg("doDwrd: %08x\n", nidOffset);
-          //msg("doDwrd: %08x\n", addOffset);
-          doDwrd(nidOffset, 4);
-          doDwrd(addOffset, 4);
+          //msg("create_dword: %08x\n", nidOffset);
+          //msg("create_dword: %08x\n", addOffset);
+          create_dword(nidOffset, 4);
+          create_dword(addOffset, 4);
         }
       }
     } else {
@@ -490,8 +490,8 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
 
   tid_t tid = get_struc_id("_scelibstub_ppu32");
 
-  do_name_anyway(stubTop - 4, "__begin_of_section_lib_stub");
-  do_name_anyway(stubEnd, "__end_of_section_lib_stub");
+  force_name(stubTop - 4, "__begin_of_section_lib_stub");
+  force_name(stubEnd, "__end_of_section_lib_stub");
 
   uchar structsize;
 
@@ -508,28 +508,28 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
     //msg("Num TLS Variables: %i\n", nTlsVar);
 
     if (structsize == sizeof(_scelibstub_ppu32)) {
-      doStruct(ea, sizeof(_scelibstub_ppu32), tid);
+      create_struct(ea, sizeof(_scelibstub_ppu32), tid);
       
-      ea_t libNamePtr   = get_long(ea + offsetof(_scelibstub_ppu32, libname));
-      ea_t funcNidTable = get_long(ea + offsetof(_scelibstub_ppu32, func_nidtable));
-      ea_t funcTable    = get_long(ea + offsetof(_scelibstub_ppu32, func_table));
-      ea_t varNidTable  = get_long(ea + offsetof(_scelibstub_ppu32, var_nidtable));
-      ea_t varTable     = get_long(ea + offsetof(_scelibstub_ppu32, var_table));
-      ea_t tlsNidTable  = get_long(ea + offsetof(_scelibstub_ppu32, tls_nidtable));
-      ea_t tlsTable     = get_long(ea + offsetof(_scelibstub_ppu32, tls_table));
+      ea_t libNamePtr   = get_dword(ea + offsetof(_scelibstub_ppu32, libname));
+      ea_t funcNidTable = get_dword(ea + offsetof(_scelibstub_ppu32, func_nidtable));
+      ea_t funcTable    = get_dword(ea + offsetof(_scelibstub_ppu32, func_table));
+      ea_t varNidTable  = get_dword(ea + offsetof(_scelibstub_ppu32, var_nidtable));
+      ea_t varTable     = get_dword(ea + offsetof(_scelibstub_ppu32, var_table));
+      ea_t tlsNidTable  = get_dword(ea + offsetof(_scelibstub_ppu32, tls_nidtable));
+      ea_t tlsTable     = get_dword(ea + offsetof(_scelibstub_ppu32, tls_table));
       
-      char libName[256];
+	  qstring libName;
       char symName[MAXNAMELEN];
-      get_ascii_contents(libNamePtr, get_max_ascii_length(libNamePtr, ASCSTR_C), ASCSTR_C, libName, 256);
+      get_strlit_contents(&libName, libNamePtr, get_max_strlit_length(libNamePtr, STRTYPE_C), STRTYPE_C);
       
-      qsnprintf(symName, MAXNAMELEN, "_%s_0001_stub_head", libName);
-      do_name_anyway(ea, symName);
+      qsnprintf(symName, MAXNAMELEN, "_%s_0001_stub_head", libName.c_str());
+      force_name(ea, symName);
       
-      qsnprintf(symName, MAXNAMELEN, "_%s_stub_str", libName);
-      do_name_anyway(libNamePtr, symName);
+      qsnprintf(symName, MAXNAMELEN, "_%s_stub_str", libName.c_str());
+      force_name(libNamePtr, symName);
       
-      qsnprintf(symName, MAXNAMELEN, "_sce_package_version_%s", libName);
-      do_name_anyway(libNamePtr - 4, symName);
+      qsnprintf(symName, MAXNAMELEN, "_sce_package_version_%s", libName.c_str());
+      force_name(libNamePtr - 4, symName);
       
       //msg("Processing %i exported functions...\n", nFunc);
       if ( funcNidTable != NULL && funcTable != NULL ) {
@@ -539,22 +539,22 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           ea_t nidOffset = funcNidTable + (i * 4);
           ea_t funcOffset = funcTable + (i * 4);
       
-          uint32 nid = get_long(nidOffset);
-          uint32 func = get_long(funcOffset);
+          uint32 nid = get_dword(nidOffset);
+          uint32 func = get_dword(funcOffset);
       
-          resolvedNid = getNameFromDatabase(libName, nid);
+          resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
             qsnprintf(symName, MAXNAMELEN, "%s.stub_entry", resolvedNid);
-            do_name_anyway(funcOffset, symName);
+            force_name(funcOffset, symName);
             qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
-            do_name_anyway(func, symName);
+            force_name(func, symName);
           }
       
-          //msg("doDwrd: %08x\n", nidOffset);
-          //msg("doDwrd: %08x\n", funcOffset);
-          doDwrd(nidOffset, 4);   // nid
-          doDwrd(funcOffset, 4);  // func
+          //msg("create_dword: %08x\n", nidOffset);
+          //msg("create_dword: %08x\n", funcOffset);
+          create_dword(nidOffset, 4);   // nid
+          create_dword(funcOffset, 4);  // func
           if ( add_func(func, BADADDR) ) {
             get_func(func)->flags |= FUNC_LIB;
             //add_entry(func, func, ...)
@@ -570,19 +570,19 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           ea_t nidOffset = varNidTable + (i * 4);
           ea_t varOffset = varTable + (i * 4);
       
-          uint32 nid = get_long(nidOffset);
-          uint32 func = get_long(varOffset);
+          uint32 nid = get_dword(nidOffset);
+          uint32 func = get_dword(varOffset);
       
-          resolvedNid = getNameFromDatabase(libName, nid);
+          resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
-            do_name_anyway(varOffset, resolvedNid);
+            force_name(varOffset, resolvedNid);
           }
       
-          //msg("doDwrd: %08x\n", nidOffset);
-          //msg("doDwrd: %08x\n", varOffset);
-          doDwrd(nidOffset, 4);
-          doDwrd(varOffset, 4);
+          //msg("create_dword: %08x\n", nidOffset);
+          //msg("create_dword: %08x\n", varOffset);
+          create_dword(nidOffset, 4);
+          create_dword(varOffset, 4);
         }
       }
       
@@ -594,19 +594,19 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
           ea_t nidOffset = tlsNidTable + (i * 4);
           ea_t tlsOffset = tlsTable + (i * 4);
       
-          uint32 nid = get_long(nidOffset);
-          uint32 func = get_long(tlsOffset);
+          uint32 nid = get_dword(nidOffset);
+          uint32 func = get_dword(tlsOffset);
       
-          resolvedNid = getNameFromDatabase(libName, nid);
+          resolvedNid = getNameFromDatabase(libName.c_str(), nid);
           if ( resolvedNid ) {
             set_cmt(nidOffset, resolvedNid, false);
-            do_name_anyway(tlsOffset, resolvedNid);
+            force_name(tlsOffset, resolvedNid);
           }
       
-          //msg("doDwrd: %08x\n", nidOffset);
-          //msg("doDwrd: %08x\n", tlsOffset);
-          doDwrd(nidOffset, 4);
-          doDwrd(tlsOffset, 4);
+          //msg("create_dword: %08x\n", nidOffset);
+          //msg("create_dword: %08x\n", tlsOffset);
+          create_dword(nidOffset, 4);
+          create_dword(tlsOffset, 4);
         }
       }
     } else {
@@ -649,13 +649,13 @@ void cell_loader::applyModuleInfo() {
                    (firstSegment.p_paddr - firstSegment.p_offset);
                              
   tid_t tid = get_struc_id("_scemoduleinfo");
-  doStruct(modInfoEa, sizeof(_scemoduleinfo_ppu32), tid);
+  create_struct(modInfoEa, sizeof(_scemoduleinfo_ppu32), tid);
   
-  loadExports( get_long(modInfoEa + offsetof(_scemoduleinfo_ppu32, ent_top)),
-               get_long(modInfoEa + offsetof(_scemoduleinfo_ppu32, ent_end)) );
+  loadExports( get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, ent_top)),
+               get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, ent_end)) );
                
-  loadImports( get_long(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_top)),
-               get_long(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_end)) );
+  loadImports( get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_top)),
+               get_dword(modInfoEa + offsetof(_scemoduleinfo_ppu32, stub_end)) );
 
   add_entry(0, modInfoEa, "module_info", false);
                              
@@ -665,16 +665,16 @@ void cell_loader::applyProcessInfo() {
   for ( auto segment : m_elf->getSegments() ) {
     if ( segment.p_type == PT_PROC_PARAM ) {
       tid_t tid = get_struc_id("sys_process_param_t");
-      doStruct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
+      create_struct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
     } else if ( segment.p_type == PT_PROC_PRX ) {
       tid_t tid = get_struc_id("sys_process_prx_info_t");
-      doStruct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
+      create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
 
-      loadExports( get_long(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
-                   get_long(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
+      loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
+                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
 
-      loadImports( get_long(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
-                   get_long(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
+      loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
+                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
     }
   }
 }
@@ -739,13 +739,13 @@ void cell_loader::applySymbols() {
 
     switch ( type ) {
     case STT_OBJECT:
-      do_name_anyway(value, &stringTable[ symbol.st_name ]);
+      force_name(value, &stringTable[ symbol.st_name ]);
       break;
     case STT_FILE:
-      describe(value, true, "Source File: %s", &stringTable[ symbol.st_name ]);
+      add_extra_line(value, true, "Source File: %s", &stringTable[ symbol.st_name ]);
       break;
     case STT_FUNC:
-      do_name_anyway(value, &stringTable[ symbol.st_name ]);
+      force_name(value, &stringTable[ symbol.st_name ]);
       auto_make_proc(value);
       break;
     default:
@@ -758,7 +758,7 @@ void cell_loader::declareStructures() {
   struc_t *sptr;
 
   // offset type
-  typeinfo_t ot;
+  opinfo_t ot;
   ot.ri.flags   = REF_OFF32;
   ot.ri.target  = BADADDR;
   ot.ri.base    = 0;
@@ -767,107 +767,107 @@ void cell_loader::declareStructures() {
   tid_t modInfoCommon = add_struc(BADADDR, "_scemoduleinfo_common");
   sptr = get_struc(modInfoCommon);
   if ( sptr != NULL ) {
-    add_struc_member(sptr, "modattribute", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "modversion", BADADDR, byteflag(), NULL, 2);
-    add_struc_member(sptr, "modname", BADADDR, byteflag(), NULL, SYS_MODULE_NAME_LEN);
-    add_struc_member(sptr, "terminal", BADADDR, byteflag(), NULL, 1);
+    add_struc_member(sptr, "modattribute", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "modversion", BADADDR, byte_flag(), NULL, 2);
+    add_struc_member(sptr, "modname", BADADDR, byte_flag(), NULL, SYS_MODULE_NAME_LEN);
+    add_struc_member(sptr, "terminal", BADADDR, byte_flag(), NULL, 1);
 
     sptr = get_struc(add_struc(BADADDR, "_scemoduleinfo"));
     if ( sptr != NULL ) {
-      typeinfo_t mt;
+	  opinfo_t mt;
       mt.tid = modInfoCommon;
-      add_struc_member(sptr, "c", BADADDR, struflag(), &mt, get_struc_size(mt.tid));
+      add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 
-      add_struc_member(sptr, "gp_value", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "ent_top", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "ent_end", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "stub_top", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "stub_end", BADADDR, offflag() | dwrdflag(), &ot, 4);
+      add_struc_member(sptr, "gp_value", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "ent_top", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "ent_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "stub_top", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "stub_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
 
   tid_t libStubCommon = add_struc(BADADDR, "_scelibstub_ppu_common");
   sptr = get_struc(libStubCommon);
   if ( sptr != NULL ) {
-    add_struc_member(sptr, "structsize", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "reserved1", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "version", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "attribute", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "nfunc", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "nvar", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "ntlsvar", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "reserved2", BADADDR, byteflag(), NULL, 4);
+    add_struc_member(sptr, "structsize", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "reserved1", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "version", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "attribute", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "nfunc", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "nvar", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "ntlsvar", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "reserved2", BADADDR, byte_flag(), NULL, 4);
 
     sptr = get_struc(add_struc(BADADDR, "_scelibstub_ppu32"));
     if ( sptr != NULL ) {
-      typeinfo_t mt;
+	  opinfo_t mt;
       mt.tid = libStubCommon;
-      add_struc_member(sptr, "c", BADADDR, struflag(), &mt, get_struc_size(mt.tid));
+      add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 
-      add_struc_member(sptr, "libname", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "func_nidtable", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "func_table", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "var_nidtable", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "var_table", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "tls_nidtable", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "tls_table", BADADDR, offflag() | dwrdflag(), &ot, 4);
+      add_struc_member(sptr, "libname", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "func_nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "func_table", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "var_nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "var_table", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "tls_nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "tls_table", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
 
   tid_t libEntCommon = add_struc(BADADDR, "_scelibent_ppu_common");
   sptr = get_struc(libEntCommon);
   if ( sptr != NULL ) {
-    add_struc_member(sptr, "structsize", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "reserved1", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "version", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "attribute", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "nfunc", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "nvar", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "ntlsvar", BADADDR, wordflag(), NULL, 2);
-    add_struc_member(sptr, "hashinfo", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "hashinfotls", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "reserved2", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "nidaltsets", BADADDR, byteflag(), NULL, 1);
+    add_struc_member(sptr, "structsize", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "reserved1", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "version", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "attribute", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "nfunc", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "nvar", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "ntlsvar", BADADDR, word_flag(), NULL, 2);
+    add_struc_member(sptr, "hashinfo", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "hashinfotls", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "reserved2", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "nidaltsets", BADADDR, byte_flag(), NULL, 1);
 
     sptr = get_struc(add_struc(BADADDR, "_scelibent_ppu32"));
     if ( sptr != NULL ) {
-      typeinfo_t mt;
+	  opinfo_t mt;
       mt.tid = libEntCommon;
-      add_struc_member(sptr, "c", BADADDR, struflag(), &mt, get_struc_size(mt.tid));
+      add_struc_member(sptr, "c", BADADDR, stru_flag(), &mt, get_struc_size(mt.tid));
 
-      add_struc_member(sptr, "libname", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "nidtable", BADADDR, offflag() | dwrdflag(), &ot, 4);
-      add_struc_member(sptr, "addtable", BADADDR, offflag() | dwrdflag(), &ot, 4);
+      add_struc_member(sptr, "libname", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "nidtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
+      add_struc_member(sptr, "addtable", BADADDR, off_flag() | dword_flag(), &ot, 4);
     }
   }
 
   tid_t procParamInfo = add_struc(BADADDR, "sys_process_param_t");
   sptr = get_struc(procParamInfo);
   if ( sptr != NULL ) {
-    add_struc_member(sptr, "size", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "magic", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "version", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "sdk_version", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "primary_prio", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "primary_stacksize", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "malloc_pagesize", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "ppc_seg", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "crash_dump_param_addr", BADADDR, dwrdflag(), NULL, 4);
+    add_struc_member(sptr, "size", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "magic", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "version", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "sdk_version", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "primary_prio", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "primary_stacksize", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "malloc_pagesize", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "ppc_seg", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "crash_dump_param_addr", BADADDR, dword_flag(), NULL, 4);
   }
 
   tid_t procPrxInfo = add_struc(BADADDR, "sys_process_prx_info_t");
   sptr = get_struc(procPrxInfo);
   if ( sptr != NULL ) {
-    add_struc_member(sptr, "size", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "magic", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "version", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "sdk_version", BADADDR, dwrdflag(), NULL, 4);
-    add_struc_member(sptr, "libent_start", BADADDR, offflag() | dwrdflag(), &ot, 4);
-    add_struc_member(sptr, "libent_end", BADADDR, offflag() | dwrdflag(), &ot, 4);
-    add_struc_member(sptr, "libstub_start", BADADDR, offflag() | dwrdflag(), &ot, 4);
-    add_struc_member(sptr, "libstub_end", BADADDR, offflag() | dwrdflag(), &ot, 4);
-    add_struc_member(sptr, "major_version", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "minor_version", BADADDR, byteflag(), NULL, 1);
-    add_struc_member(sptr, "reserved", BADADDR, byteflag(), NULL, 6);
+    add_struc_member(sptr, "size", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "magic", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "version", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "sdk_version", BADADDR, dword_flag(), NULL, 4);
+    add_struc_member(sptr, "libent_start", BADADDR, off_flag() | dword_flag(), &ot, 4);
+    add_struc_member(sptr, "libent_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
+    add_struc_member(sptr, "libstub_start", BADADDR, off_flag() | dword_flag(), &ot, 4);
+    add_struc_member(sptr, "libstub_end", BADADDR, off_flag() | dword_flag(), &ot, 4);
+    add_struc_member(sptr, "major_version", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "minor_version", BADADDR, byte_flag(), NULL, 1);
+    add_struc_member(sptr, "reserved", BADADDR, byte_flag(), NULL, 6);
   }
 }
