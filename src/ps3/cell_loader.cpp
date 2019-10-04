@@ -677,8 +677,7 @@ void cell_loader::applyProcessInfo() {
     if ( segment.p_type == PT_PROC_PARAM ) {
       tid_t tid = get_struc_id("sys_process_param_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
-    }
-    else if ( segment.p_type == PT_PROC_PRX ) {
+    } else if ( segment.p_type == PT_PROC_PRX ) {
       tid_t tid = get_struc_id("sys_process_prx_info_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
       
