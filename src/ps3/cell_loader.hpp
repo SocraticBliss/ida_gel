@@ -1,8 +1,8 @@
-
-
 #include "elf_reader.hpp"
-#include "tinyxml.h"
 #include "sce.hpp"
+
+#include "tinyxml.h"
+
 #include <string>
 
 class cell_loader {
@@ -27,14 +27,14 @@ public:
   
 private:
   void applySegments();
-  void applySegment(uint32 sel, 
-                    uint64 offset, 
-                    uint64 addr, 
-                    uint64 size, 
-                    const char *name, 
-                    const char *sclass, 
-                    uchar perm, 
-                    uchar align, 
+  void applySegment(uint32 sel,
+                    uint64 offset,
+                    uint64 addr,
+                    uint64 size,
+                    const char *name,
+                    const char *sclass,
+                    uchar perm,
+                    uchar align,
                     bool load = true);
   
   void applySectionHeaders();
