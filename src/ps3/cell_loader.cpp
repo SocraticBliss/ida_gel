@@ -65,8 +65,8 @@ void cell_loader::apply() {
     
     // gpValue can be found at sceModuleInfo->gp_value
     // 0.85 gpValue is base address of .toc
-	msg("Applying Relocations...\n");
-	applyRelocations();
+    msg("Applying Relocations...\n");
+    applyRelocations();
     
     // if not a 0.85 PRX
     if ( !m_hasSegSym ) {
@@ -77,7 +77,7 @@ void cell_loader::apply() {
                              offsetof(_scemoduleinfo_ppu32, gp_value) );
     }
     
-	msg("Applying Module Info...\n");
+    msg("Applying Module Info...\n");
     applyModuleInfo();
   } else if ( isLoadingExec() ) {
     // gpValue can be found at m_elf->entry() + 4
@@ -125,8 +125,8 @@ void cell_loader::applySectionHeaders() {
       if ( section.sh_type == SHT_NULL )
         continue;
       
-      uchar perm = SEGPERM_READ;
-      char *sclass;
+      uchar perm = 0;
+      char *sclass = NULL;
       
       if ( section.sh_flags & SHF_WRITE )
         perm |= SEGPERM_WRITE;
@@ -623,7 +623,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
 }
 
 const char *cell_loader::getNameFromDatabase(
-	const char *library, unsigned int nid) {
+    const char *library, unsigned int nid) {
   auto header = m_database.FirstChildElement();
   
   if ( header ) {
@@ -673,14 +673,42 @@ void cell_loader::applyProcessInfo() {
       tid_t tid = get_struc_id("sys_process_param_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
     } else if ( segment.p_type == PT_PROC_PRX ) {
-      tid_t tid = get_struc_id("sys_process_prx_info_t");
-      create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
+      ea_t libent_start = 0;
+      ea_t libent_end = 0;
+      ea_t libstub_start = 0; 
+      ea_t libstub_end = 0;
+	  
+      // VSH has this segment zeroed and stripped.
+      if ( segment.p_filesz == 0 ) {
+        // try and find libent and libstub segments
+        segment_t *libSeg;
+        for ( libSeg = get_first_seg(); libSeg != NULL; 
+              libSeg = get_next_seg(libSeg->start_ea) ) {
+          auto structsize = get_byte(libSeg->start_ea);
+          auto structsize2 = get_byte(libSeg->start_ea + structsize);
+		  
+          if ( structsize  == sizeof(_scelibstub_ppu32) &&
+               structsize2 == sizeof(_scelibstub_ppu32) ) {
+            libstub_start = libSeg->start_ea;
+            libstub_end   = libSeg->end_ea;
+          } else if ( structsize  == sizeof(_scelibent_ppu32) &&
+                      structsize2 == sizeof(_scelibent_ppu32) ) {
+            libent_start = libSeg->start_ea;
+            libent_end   = libSeg->end_ea;
+          }
+        }
+      } else {
+        tid_t tid = get_struc_id("sys_process_prx_info_t");
+        create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
+		
+        libent_start  = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start));
+        libent_end    = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end));
+        libstub_start = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start));
+        libstub_end   = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end));
+      }
       
-      loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
-                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
-      
-      loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
-                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
+      loadExports( libent_start, libent_end );
+      loadImports( libstub_start, libstub_end );
     }
   }
 }
