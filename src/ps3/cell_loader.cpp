@@ -1,4 +1,4 @@
-#include "cell_loader.h"
+#include "cell_loader.hpp"
 
 #include <idaldr.h>
 #include <struct.hpp>
@@ -556,10 +556,10 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
             force_name(funcOffset, symName);
             qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
             force_name(func, symName);
-          
+
 			netnode import_node;
 			netnode_check(&import_node, libName.c_str(), 0, true); //"$ IDALDR node for ids loading $"
-			netnode_supset(import_node, funcOffset, symName, 0, 339);
+			netnode_supset(import_node, func, symName, 0, 339);
 			import_module(libName.c_str(), 0, import_node, 0, "linux");
 		  }
           

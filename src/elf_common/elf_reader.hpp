@@ -31,7 +31,7 @@
 
 #pragma once
 
-#include "elf.h"
+#include "elf.hpp"
 
 #include <idaldr.h> // TODO: do not depend on this
 #include <vector>

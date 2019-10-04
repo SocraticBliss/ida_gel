@@ -1,6 +1,6 @@
 #pragma once
 
-#include "elf.h"
+#include "elf.hpp"
 
 #define ELFOSABI_CELLOSLV2         102 /* CellOS Lv2 */ /* sce local */
 
