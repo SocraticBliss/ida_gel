@@ -1,8 +1,8 @@
 # ida_game_elf_loaders
 A collection of user mode ELF loaders for the following game consoles:
-* PS3
-* PS Vita
-* Wii U
+* PS3 - IDA 7.2
+* PS Vita - Still working on porting
+* Wii U - Still working on porting
 
 ## Installation
 Copy loader plugins to IDA loaders directory.
@@ -29,4 +29,4 @@ Optionally, you can also build using cmake with the following command
 `cmake --build ./`
 
 ## Notes
-These have only been tested and built using Visual Studio 2015 using IDA SDK 6.8.
+These have only been tested and built using Visual Studio 2017 using IDA SDK 7.2.
