@@ -555,12 +555,12 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
             force_name(funcOffset, symName);
             qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
             force_name(func, symName);
-			
-			netnode import_node;
-			netnode_check(&import_node, libName.c_str(), 0, true); //"$ IDALDR node for ids loading $"
-			netnode_supset(import_node, func, symName, 0, 339);
-			import_module(libName.c_str(), 0, import_node, 0, "linux");
-		  }
+            
+            netnode import_node;
+            netnode_check(&import_node, libName.c_str(), 0, true); //"$ IDALDR node for ids loading $"
+            netnode_supset(import_node, func, symName, 0, 339);
+            import_module(libName.c_str(), 0, import_node, 0, "linux");
+          }
           
           //msg("create_dword: %08x\n", nidOffset);
           //msg("create_dword: %08x\n", funcOffset);
@@ -677,17 +677,17 @@ void cell_loader::applyProcessInfo() {
     if ( segment.p_type == PT_PROC_PARAM ) {
       tid_t tid = get_struc_id("sys_process_param_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
-	}
-	else if ( segment.p_type == PT_PROC_PRX ) {
-	  tid_t tid = get_struc_id("sys_process_prx_info_t");
-	  create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
-
-	  loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
-				   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
-
-	  loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
-				   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
-	}
+    }
+    else if ( segment.p_type == PT_PROC_PRX ) {
+      tid_t tid = get_struc_id("sys_process_prx_info_t");
+      create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
+      
+      loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
+                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
+      
+      loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
+                   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
+    }
   }
 }
 
