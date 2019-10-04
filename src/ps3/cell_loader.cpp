@@ -90,7 +90,7 @@ void cell_loader::apply() {
     add_entry(0, m_elf->entry(), "_start", true);
   }
   
-  msg("gpValue = %08\n", m_gpValue);
+  msg("gpValue = %08x\n", m_gpValue);
   
   // set TOC in IDA
   ph.notify(processor_t::event_t(ph.ev_loader+1), m_gpValue);
@@ -471,7 +471,6 @@ void cell_loader::loadExports(uint32 entTop, uint32 entEnd) {
               if ( i < nfunc ) {
                 qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
                 force_name(addToc, symName);
-				add_entry(addToc, addToc, symName, true);
               }
             }
             
@@ -556,7 +555,7 @@ void cell_loader::loadImports(uint32 stubTop, uint32 stubEnd) {
             force_name(funcOffset, symName);
             qsnprintf(symName, MAXNAMELEN, ".%s", resolvedNid);
             force_name(func, symName);
-
+			
 			netnode import_node;
 			netnode_check(&import_node, libName.c_str(), 0, true); //"$ IDALDR node for ids loading $"
 			netnode_supset(import_node, func, symName, 0, 339);
@@ -678,44 +677,17 @@ void cell_loader::applyProcessInfo() {
     if ( segment.p_type == PT_PROC_PARAM ) {
       tid_t tid = get_struc_id("sys_process_param_t");
       create_struct(segment.p_vaddr, sizeof(sys_process_param_t), tid);
-    } else if ( segment.p_type == PT_PROC_PRX ) {
-      ea_t libent_start = 0;
-      ea_t libent_end = 0;
-      ea_t libstub_start = 0; 
-      ea_t libstub_end = 0;
-	  
-      // VSH has this segment zeroed and stripped.
-      if ( segment.p_filesz == 0 ) {
-        // try and find libent and libstub segments
-        segment_t *libSeg;
-        for ( libSeg = get_first_seg(); libSeg != NULL; 
-              libSeg = get_next_seg(libSeg->start_ea) ) {
-          auto structsize = get_byte(libSeg->start_ea);
-          auto structsize2 = get_byte(libSeg->start_ea + structsize);
-		  
-          if ( structsize  == sizeof(_scelibstub_ppu32) &&
-               structsize2 == sizeof(_scelibstub_ppu32) ) {
-            libstub_start = libSeg->start_ea;
-            libstub_end   = libSeg->end_ea;
-          } else if ( structsize  == sizeof(_scelibent_ppu32) &&
-                      structsize2 == sizeof(_scelibent_ppu32) ) {
-            libent_start = libSeg->start_ea;
-            libent_end   = libSeg->end_ea;
-          }
-        }
-      } else {
-        tid_t tid = get_struc_id("sys_process_prx_info_t");
-        create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
-		
-        libent_start  = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start));
-        libent_end    = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end));
-        libstub_start = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start));
-        libstub_end   = get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end));
-      }
-      
-      loadExports( libent_start, libent_end );
-      loadImports( libstub_start, libstub_end );
-    }
+	}
+	else if ( segment.p_type == PT_PROC_PRX ) {
+	  tid_t tid = get_struc_id("sys_process_prx_info_t");
+	  create_struct(segment.p_vaddr, sizeof(sys_process_prx_info_t), tid);
+
+	  loadExports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_start)),
+				   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libent_end)) );
+
+	  loadImports( get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_start)),
+				   get_dword(segment.p_vaddr + offsetof(sys_process_prx_info_t, libstub_end)) );
+	}
   }
 }
 
