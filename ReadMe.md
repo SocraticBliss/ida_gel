@@ -1,6 +1,6 @@
 # ida_game_elf_loaders
 A collection of user mode ELF loaders for the following game consoles:
-* PS3
+* PS3 - IDA 7.2
 * PS Vita - Still working on porting
 * Wii U - Still working on porting
 
